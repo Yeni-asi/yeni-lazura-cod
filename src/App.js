@@ -75,7 +75,7 @@ async function esp32Durdur(ip) { await fetch(`http://${ip}/durdur`, { method: "P
 async function esp32TetikBas(ip) { await fetch(`http://${ip}/tetik/bas`, { method: "POST", signal: AbortSignal.timeout(3000) }); }
 async function esp32TetikBirak(ip) { await fetch(`http://${ip}/tetik/birak`, { method: "POST", signal: AbortSignal.timeout(3000) }); }
 
-const GEMINI_API_KEY = "AIzaSyDtvttG9K2F2nt1jZrsMoFNsIrn8kwkyCM";
+const GEMINI_API_KEY = "AIzaSyCd500rf7WiubrRedvAYbwA6x7vT2U_tUs";
 
 async function ciltKilAnalizEt(base64Img, seansNo, oncekiSeanslar) {
   const onceki = oncekiSeanslar.length > 0
@@ -84,7 +84,7 @@ async function ciltKilAnalizEt(base64Img, seansNo, oncekiSeanslar) {
   const prompt = `Lazer epilasyon uzmanısın. Bu cilt/kıl fotoğrafını analiz et. ${onceki}\nSadece JSON döndür, başka hiçbir şey yazma:\n{"ciltTonu":3,"ciltAciklama":"Orta esmer","kilRenk":"koyu","kilKalinlik":"orta","kilYogunluk":"yüksek","onerilen":{"enerji":8,"pulse":55,"hz":6},"seansNotu":"Müşteriye kısa bilgi.","uyari":""}`;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -260,7 +260,7 @@ function MusteriPanel({ esp32Ip }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const dosyaRef = useRef(null);
+  // dosyaRef kaldırıldı — galeri label ile direkt tetikleniyor
 
   useEffect(() => {
     try { const m = localStorage.getItem("lazura_musteriler"); if (m) setMusteriler(JSON.parse(m)); } catch {}
