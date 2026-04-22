@@ -75,7 +75,7 @@ async function esp32Durdur(ip) { await fetch(`http://${ip}/durdur`, { method: "P
 async function esp32TetikBas(ip) { await fetch(`http://${ip}/tetik/bas`, { method: "POST", signal: AbortSignal.timeout(3000) }); }
 async function esp32TetikBirak(ip) { await fetch(`http://${ip}/tetik/birak`, { method: "POST", signal: AbortSignal.timeout(3000) }); }
 
-const GEMINI_API_KEY = "AIzaSyCd500rf7WiubrRedvAYbwA6x7vT2U_tUs";
+const GEMINI_API_KEY = "AIzaSyBg6uXamvmA0tE-43UpuhKQRQ1AN5j6v_0";
 
 async function ciltKilAnalizEt(base64Img, seansNo, oncekiSeanslar) {
   const onceki = oncekiSeanslar.length > 0
