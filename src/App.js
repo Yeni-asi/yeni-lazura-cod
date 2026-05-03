@@ -18,7 +18,7 @@ const FS_YUKLEME_CARPAN = 0x9E3779B1;
 const FS_YUKLEME_HASH_CARPAN = 7919;
 const FS_PAKET_SINIRSIZ = 0xFFFFFFFF;
 
-const GEMINI_API_KEY = "AIzaSyBnm1lrrauK6jOWdlgD3SSKe7Tz30XMmEo";
+const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_KEY || "";
 
 function aktivasyonKoduHesapla(seriNo, paket, yuklemeNo) {
   let h = FS_GIZLI_ANAHTAR_1 >>> 0;
@@ -76,10 +76,7 @@ async function esp32TetikBirak(ip) { await fetch(`http://${ip}/tetik/birak`, { m
 
 // ── GEMİNİ ANALİZ ──
 async function ciltKilAnalizEt(base64Img, seansNo, oncekiSeanslar) {
-  const onceki = oncekiSeanslar.length > 0
-    ? `Önceki seanslar: ${oncekiSeanslar.slice(-3).map(s => `Seans ${s.seansNo}: E:${s.enerji} P:${s.pulse} Hz:${s.hz}, not:${s.notlar || ""}`).join(" | ")}`
-    : "İlk seans";
-  const prompt = `Lazer epilasyon uzmanısın. Bu cilt/kıl fotoğrafını analiz et. ${onceki}\nSadece JSON döndür, başka hiçbir şey yazma:\n{"ciltTonu":3,"ciltAciklama":"Orta esmer","kilRenk":"koyu","kilKalinlik":"orta","kilYogunluk":"yüksek","onerilen":{"enerji":8,"pulse":55,"hz":6},"seansNotu":"Müşteriye kısa bilgi.","uyari":""}`;
+  const prompt = `Lazer epilasyon uzmanısın. Bu cilt/kıl fotoğrafını incele. Sadece JSON döndür, başka hiçbir şey yazma:\n{"kilKalinlik":"ince","kilYogunluk":"seyrek","dokulmeYorumu":"Kıl durumu hakkında kısa yorum.","onerilen":{"enerji":6,"pulse":45,"hz":7},"uyari":""}`;
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: "image/jpeg", data: base64Img } }, { text: prompt }] }] }) }
