@@ -3,13 +3,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 const ADMIN_SIFRE = "145321";
 const GIZLI_ANAHTAR = "LAZER145321ESP32";
 
+// Sadece FS kaldı — müşteriye gönderilecek versiyonda FS yerine LU/CL vb. yazılır
 const FIRMALAR = [
   { kod: "FS", ad: "FS" },
-  { kod: "LU", ad: "Luna" },
-  { kod: "IR", ad: "Ironmed" },
-  { kod: "RA", ad: "Rain" },
-  { kod: "CL", ad: "Clinix" },
-  { kod: "ZT", ad: "Zet Tech" },
 ];
 
 const renk = "#6C0BA9";
@@ -21,6 +17,8 @@ const FS_GIZLI_ANAHTAR_2 = 0xB7D40C83;
 const FS_YUKLEME_CARPAN = 0x9E3779B1;
 const FS_YUKLEME_HASH_CARPAN = 7919;
 const FS_PAKET_SINIRSIZ = 0xFFFFFFFF;
+
+const GEMINI_API_KEY = "AIzaSyBnm1lrrauK6jOWdlgD3SSKe7Tz30XMmEo";
 
 function aktivasyonKoduHesapla(seriNo, paket, yuklemeNo) {
   let h = FS_GIZLI_ANAHTAR_1 >>> 0;
@@ -63,6 +61,7 @@ function seriNoUret(firmaKod, firmaSayaclari) {
   return { sayac, seriNo: `${firmaKod}${String(sayac).padStart(4, "0")}` };
 }
 
+// ── ESP32 API ──
 async function esp32Durum(ip) {
   const r = await fetch(`http://${ip}/durum`, { signal: AbortSignal.timeout(3000) });
   return r.json();
@@ -75,44 +74,25 @@ async function esp32Durdur(ip) { await fetch(`http://${ip}/durdur`, { method: "P
 async function esp32TetikBas(ip) { await fetch(`http://${ip}/tetik/bas`, { method: "POST", signal: AbortSignal.timeout(3000) }); }
 async function esp32TetikBirak(ip) { await fetch(`http://${ip}/tetik/birak`, { method: "POST", signal: AbortSignal.timeout(3000) }); }
 
-const GEMINI_API_KEY = "AIzaSyBg6uXamvmA0tE-43UpuhKQRQ1AN5j6v_0";
-
+// ── GEMİNİ ANALİZ ──
 async function ciltKilAnalizEt(base64Img, seansNo, oncekiSeanslar) {
   const onceki = oncekiSeanslar.length > 0
     ? `Önceki seanslar: ${oncekiSeanslar.slice(-3).map(s => `Seans ${s.seansNo}: E:${s.enerji} P:${s.pulse} Hz:${s.hz}, not:${s.notlar || ""}`).join(" | ")}`
     : "İlk seans";
   const prompt = `Lazer epilasyon uzmanısın. Bu cilt/kıl fotoğrafını analiz et. ${onceki}\nSadece JSON döndür, başka hiçbir şey yazma:\n{"ciltTonu":3,"ciltAciklama":"Orta esmer","kilRenk":"koyu","kilKalinlik":"orta","kilYogunluk":"yüksek","onerilen":{"enerji":8,"pulse":55,"hz":6},"seansNotu":"Müşteriye kısa bilgi.","uyari":""}`;
-
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { inline_data: { mime_type: "image/jpeg", data: base64Img } },
-            { text: prompt }
-          ]
-        }]
-      })
-    }
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: "image/jpeg", data: base64Img } }, { text: prompt }] }] }) }
   );
   const data = await response.json();
-  console.log("Gemini ham yanıt:", JSON.stringify(data));
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  console.log("Gemini text:", text);
-  if (!text) {
-    const hata = data.error?.message || data.promptFeedback?.blockReason || "Gemini boş yanıt döndü";
-    throw new Error(hata);
-  }
-  // JSON bloğunu bul — bazen ```json ... ``` içinde gelir
+  if (!text) throw new Error(data.error?.message || "Gemini boş yanıt döndü");
   const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("JSON bulunamadı: " + text.substring(0, 100));
+  if (!jsonMatch) throw new Error("JSON bulunamadı");
   return JSON.parse(jsonMatch[0]);
 }
 
-// ── ESP32 KONTROL ──
+// ── ESP32 KONTROL PANELİ ──
 function Esp32Panel({ ip, onIpDegis }) {
   const [durum, setDurum] = useState(null);
   const [baglanti, setBaglanti] = useState("bekleniyor");
@@ -151,7 +131,7 @@ function Esp32Panel({ ip, onIpDegis }) {
       <div style={{ background: "white", borderRadius: 20, padding: 28, boxShadow: "0 2px 16px rgba(108,11,169,0.1)" }}>
         <div style={{ fontSize: 14, fontWeight: "bold", color: "#aaa", letterSpacing: 2, marginBottom: 16 }}>ESP32 IP ADRESİ</div>
         <input style={{ width: "88%", padding: 14, borderRadius: 12, border: `2px solid ${renkAcik}`, fontSize: 18, textAlign: "center", fontFamily: "monospace", outline: "none", marginBottom: 12 }}
-          placeholder="192.168.1.151" value={ipGirdi} onChange={e => setIpGirdi(e.target.value)}
+          placeholder="192.168.1.100" value={ipGirdi} onChange={e => setIpGirdi(e.target.value)}
           onKeyDown={e => e.key === "Enter" && onIpDegis(ipGirdi)} />
         <button style={{ width: "100%", padding: 14, background: renk, color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: "bold", cursor: "pointer" }}
           onClick={() => { onIpDegis(ipGirdi); setIpDuzenleme(false); }}>BAĞLAN</button>
@@ -197,8 +177,7 @@ function Esp32Panel({ ip, onIpDegis }) {
 
         {aktif && (
           <div style={{ marginBottom: 16 }}>
-            <button
-              onPointerDown={tetikBas} onPointerUp={tetikBirak} onPointerLeave={tetikBirak}
+            <button onPointerDown={tetikBas} onPointerUp={tetikBirak} onPointerLeave={tetikBirak}
               style={{ width: "100%", padding: 24, background: tetikBasili ? "#dc2626" : "#16a34a", color: "white", border: "none", borderRadius: 16, fontSize: 20, fontWeight: "bold", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", transition: "background 0.1s" }}>
               {tetikBasili ? "⚡ ATIŞ DEVAM EDİYOR" : "👆 TETİK — BASILI TUT"}
             </button>
@@ -239,7 +218,7 @@ function Esp32Panel({ ip, onIpDegis }) {
   );
 }
 
-// ── MÜŞTERİ ──
+// ── MÜŞTERİ PANELİ ──
 function MusteriPanel({ esp32Ip }) {
   const [musteriler, setMusteriler] = useState([]);
   const [ekran, setEkran] = useState("liste");
@@ -260,7 +239,6 @@ function MusteriPanel({ esp32Ip }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  // dosyaRef kaldırıldı — galeri label ile direkt tetikleniyor
 
   useEffect(() => {
     try { const m = localStorage.getItem("lazura_musteriler"); if (m) setMusteriler(JSON.parse(m)); } catch {}
@@ -275,12 +253,17 @@ function MusteriPanel({ esp32Ip }) {
     setMusteriler(yM); kaydet(yM); setYeniIsim(""); setYeniTel(""); setYeniNot(""); setEkran("liste");
   };
 
+  const musteriSil = (musteriId) => {
+    if (!window.confirm("Müşteri ve tüm seans geçmişi silinsin mi?")) return;
+    const yM = musteriler.filter(m => m.id !== musteriId);
+    setMusteriler(yM); kaydet(yM); setEkran("liste"); setSeciliMusteri(null);
+  };
+
   const kameraAc = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
       streamRef.current = stream;
       setCameraAcik(true);
-      // DOM render bekliyoruz, sonra stream atıyoruz
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -289,10 +272,7 @@ function MusteriPanel({ esp32Ip }) {
           if (p !== undefined) p.catch(() => {});
         }
       }, 250);
-    } catch (e) {
-      alert("Kamera açılamadı: " + e.message);
-      setSeansYontemi(null);
-    }
+    } catch (e) { alert("Kamera açılamadı: " + e.message); setSeansYontemi(null); }
   };
 
   const kameraKapat = () => {
@@ -302,8 +282,7 @@ function MusteriPanel({ esp32Ip }) {
 
   const fotografCek = () => {
     if (!videoRef.current || !canvasRef.current) return;
-    const v = videoRef.current;
-    const c = canvasRef.current;
+    const v = videoRef.current; const c = canvasRef.current;
     c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
     c.getContext("2d").drawImage(v, 0, 0);
     setYakalananFoto(c.toDataURL("image/jpeg", 0.85));
@@ -329,6 +308,22 @@ function MusteriPanel({ esp32Ip }) {
     alert("Seans kaydedildi!");
   };
 
+  const seansFotoSil = (seansNo) => {
+    if (!window.confirm("Fotoğraf silinsin mi?")) return;
+    const yM = musteriler.map(m => m.id === seciliMusteri.id
+      ? { ...m, seanslar: m.seanslar.map(s => s.seansNo === seansNo ? { ...s, foto: null } : s) } : m);
+    const guncel = yM.find(m => m.id === seciliMusteri.id);
+    setMusteriler(yM); kaydet(yM); setSeciliMusteri(guncel);
+  };
+
+  const seansSil = (seansNo) => {
+    if (!window.confirm("Bu seans silinsin mi?")) return;
+    const yM = musteriler.map(m => m.id === seciliMusteri.id
+      ? { ...m, seanslar: m.seanslar.filter(s => s.seansNo !== seansNo) } : m);
+    const guncel = yM.find(m => m.id === seciliMusteri.id);
+    setMusteriler(yM); kaydet(yM); setSeciliMusteri(guncel);
+  };
+
   const seansKaydetAnalizli = () => {
     if (!analizSonuc) return;
     seansKaydet({ seansNo: (seciliMusteri.seanslar?.length || 0) + 1, tarih: bugun(), foto: yakalananFoto, ciltTonu: analizSonuc.ciltTonu, kilKalinlik: analizSonuc.kilKalinlik, enerji: analizSonuc.onerilen?.enerji, pulse: analizSonuc.onerilen?.pulse, hz: analizSonuc.onerilen?.hz, atisAdedi: 0, notlar: analizSonuc.seansNotu });
@@ -339,6 +334,7 @@ function MusteriPanel({ esp32Ip }) {
     seansKaydet({ seansNo: (seciliMusteri.seanslar?.length || 0) + 1, tarih: bugun(), foto: null, ciltTonu: null, kilKalinlik: null, enerji: manuelEnerji, pulse: manuelPulse, hz: manuelHz, atisAdedi: 0, notlar: manuelNot || "Manuel seans" });
   };
 
+  // SEANS EKRANI
   if (ekran === "seans") return (
     <div style={{ padding: 16 }}>
       <button onClick={() => { setEkran("detay"); kameraKapat(); setYakalananFoto(null); setAnalizSonuc(null); setSeansYontemi(null); }}
@@ -353,13 +349,11 @@ function MusteriPanel({ esp32Ip }) {
         {!seansYontemi && !yakalananFoto && !analizSonuc && (
           <div>
             <div style={{ fontSize: 13, color: "#888", marginBottom: 14 }}>Seans nasıl kaydedilsin?</div>
-            {/* Kamera */}
             <button onClick={() => { setSeansYontemi("kamera"); kameraAc(); }}
               style={{ width: "100%", padding: 16, background: renkAcik, border: "2px solid transparent", borderRadius: 14, marginBottom: 10, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14 }}>
               <span style={{ fontSize: 28 }}>📸</span>
               <div><div style={{ fontWeight: "bold", color: renk, fontSize: 15 }}>Kamera ile AI Analiz</div><div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Cilt fotoğrafı çek, yapay zeka analiz etsin</div></div>
             </button>
-            {/* Galeri — label ile input direkt tetiklenir */}
             <label style={{ width: "100%", padding: 16, background: renkAcik, border: "2px solid transparent", borderRadius: 14, marginBottom: 10, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14, boxSizing: "border-box" }}>
               <span style={{ fontSize: 28 }}>🖼️</span>
               <div><div style={{ fontWeight: "bold", color: renk, fontSize: 15 }}>Galeriden Yükle</div><div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Mevcut fotoğraf seç, AI analiz etsin</div></div>
@@ -370,7 +364,6 @@ function MusteriPanel({ esp32Ip }) {
                   const r = new FileReader(); r.onload = ev => setYakalananFoto(ev.target.result); r.readAsDataURL(file);
                 }} />
             </label>
-            {/* Manuel */}
             <button onClick={() => setSeansYontemi("manuel")}
               style={{ width: "100%", padding: 16, background: renkAcik, border: "2px solid transparent", borderRadius: 14, marginBottom: 10, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14 }}>
               <span style={{ fontSize: 28 }}>✏️</span>
@@ -384,8 +377,7 @@ function MusteriPanel({ esp32Ip }) {
           <div>
             {cameraAcik ? (
               <div>
-                <video ref={videoRef} autoPlay playsInline muted
-                  style={{ width: "100%", borderRadius: 14, background: "#111", minHeight: 220, display: "block" }} />
+                <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", borderRadius: 14, background: "#111", minHeight: 220, display: "block" }} />
                 <canvas ref={canvasRef} style={{ display: "none" }} />
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                   <button onClick={fotografCek} style={{ flex: 1, padding: 14, background: renk, color: "white", border: "none", borderRadius: 12, fontWeight: "bold", cursor: "pointer", fontSize: 15 }}>📷 Çek</button>
@@ -402,7 +394,11 @@ function MusteriPanel({ esp32Ip }) {
         {/* Fotoğraf analiz */}
         {yakalananFoto && !analizSonuc && (
           <div>
-            <img src={yakalananFoto} alt="" style={{ width: "100%", borderRadius: 14, marginBottom: 14, maxHeight: 280, objectFit: "cover" }} />
+            <div style={{ position: "relative", marginBottom: 14 }}>
+              <img src={yakalananFoto} alt="" style={{ width: "100%", borderRadius: 14, maxHeight: 280, objectFit: "cover" }} />
+              <button onClick={() => { setYakalananFoto(null); setSeansYontemi(null); }}
+                style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", color: "white", border: "none", borderRadius: 20, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: "bold" }}>🗑️ Sil</button>
+            </div>
             {analizHata && <div style={{ color: "#ef4444", fontSize: 13, marginBottom: 10 }}>{analizHata}</div>}
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={analizEt} disabled={analizYukleniyor}
@@ -418,7 +414,13 @@ function MusteriPanel({ esp32Ip }) {
         {/* Analiz sonucu */}
         {analizSonuc && (
           <div>
-            {yakalananFoto && <img src={yakalananFoto} alt="" style={{ width: "100%", borderRadius: 14, marginBottom: 14, maxHeight: 200, objectFit: "cover" }} />}
+            {yakalananFoto && (
+              <div style={{ position: "relative", marginBottom: 14 }}>
+                <img src={yakalananFoto} alt="" style={{ width: "100%", borderRadius: 14, maxHeight: 200, objectFit: "cover" }} />
+                <button onClick={() => setYakalananFoto(null)}
+                  style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", color: "white", border: "none", borderRadius: 20, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: "bold" }}>🗑️ Sil</button>
+              </div>
+            )}
             <div style={{ background: renkAcik, borderRadius: 14, padding: 14, marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: "bold", color: renk, marginBottom: 10 }}>🔬 ANALİZ</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -472,6 +474,7 @@ function MusteriPanel({ esp32Ip }) {
     </div>
   );
 
+  // MÜŞTERİ DETAY
   if (ekran === "detay" && seciliMusteri) return (
     <div style={{ padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -480,20 +483,39 @@ function MusteriPanel({ esp32Ip }) {
         <button onClick={() => { setSeansYontemi(null); setYakalananFoto(null); setAnalizSonuc(null); setEkran("seans"); }}
           style={{ background: renk, border: "none", borderRadius: 18, padding: "8px 14px", color: "white", cursor: "pointer", fontWeight: "bold", fontSize: 13 }}>+ Seans</button>
       </div>
+
       <div style={{ background: "white", borderRadius: 16, padding: 18, marginBottom: 14, boxShadow: "0 2px 8px rgba(108,11,169,0.07)" }}>
         {seciliMusteri.telefon && <div style={{ fontSize: 14, color: "#555", marginBottom: 4 }}>📞 {seciliMusteri.telefon}</div>}
         {seciliMusteri.notlar && <div style={{ fontSize: 13, color: "#888" }}>📝 {seciliMusteri.notlar}</div>}
         <div style={{ fontSize: 11, color: "#bbb", marginTop: 8 }}>Kayıt: {seciliMusteri.kayitTarih}</div>
+        <button onClick={() => musteriSil(seciliMusteri.id)}
+          style={{ marginTop: 12, background: "#fff5f5", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: "bold", width: "100%" }}>
+          🗑️ Müşteriyi Sil
+        </button>
       </div>
-      <div style={{ fontSize: 12, fontWeight: "bold", color: "#aaa", letterSpacing: 2, marginBottom: 10 }}>SEANS GEÇMİŞİ ({seciliMusteri.seanslar?.length || 0})</div>
+
+      <div style={{ fontSize: 12, fontWeight: "bold", color: "#aaa", letterSpacing: 2, marginBottom: 10 }}>
+        SEANS GEÇMİŞİ ({seciliMusteri.seanslar?.length || 0})
+      </div>
+
       {(!seciliMusteri.seanslar || seciliMusteri.seanslar.length === 0)
         ? <div style={{ textAlign: "center", padding: 40, color: "#bbb" }}><div style={{ fontSize: 40 }}>📋</div><div style={{ marginTop: 8 }}>Seans yok — + Seans butonuna bas</div></div>
         : [...seciliMusteri.seanslar].reverse().map((s, i) => (
           <div key={i} style={{ background: "white", borderRadius: 14, padding: 16, marginBottom: 10, boxShadow: "0 2px 8px rgba(108,11,169,0.07)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <div style={{ fontWeight: "bold", color: renk }}>Seans {s.seansNo}</div>
-              <div style={{ fontSize: 11, color: "#bbb" }}>{s.tarih}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 11, color: "#bbb" }}>{s.tarih}</div>
+                <button onClick={() => seansSil(s.seansNo)} style={{ background: "#fff5f5", color: "#ef4444", border: "none", borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: "bold" }}>Sil</button>
+              </div>
             </div>
+            {s.foto && (
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <img src={s.foto} alt="" style={{ width: "100%", borderRadius: 10, maxHeight: 160, objectFit: "cover" }} />
+                <button onClick={() => seansFotoSil(s.seansNo)}
+                  style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", color: "white", border: "none", borderRadius: 16, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: "bold" }}>🗑️</button>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
               {s.ciltTonu && <span style={{ background: renkAcik, color: renk, padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: "bold" }}>Cilt T{s.ciltTonu}</span>}
               {s.kilKalinlik && <span style={{ background: renkAcik, color: renk, padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: "bold" }}>{s.kilKalinlik}</span>}
@@ -507,6 +529,7 @@ function MusteriPanel({ esp32Ip }) {
     </div>
   );
 
+  // YENİ MÜŞTERİ
   if (ekran === "yeni") return (
     <div style={{ padding: 16 }}>
       <button onClick={() => setEkran("liste")} style={{ background: renkAcik, border: "none", borderRadius: 18, padding: "8px 16px", color: renk, cursor: "pointer", fontWeight: "bold", marginBottom: 16 }}>← Geri</button>
@@ -523,6 +546,7 @@ function MusteriPanel({ esp32Ip }) {
     </div>
   );
 
+  // MÜŞTERİ LİSTESİ
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -616,6 +640,21 @@ export default function App() {
     setCihazlar(yC); setFirmaSayaclari(yF); kaydet(yC, yF); setSeciliFirma(null); setEkran("liste");
   };
 
+  const cihazSil = (cihazId) => {
+    if (!window.confirm("Cihaz silinsin mi?")) return;
+    const yC = cihazlar.filter(c => c.id !== cihazId);
+    setCihazlar(yC); kaydet(yC, firmaSayaclari);
+    if (seciliCihaz?.id === cihazId) { setSeciliCihaz(null); setEkran("liste"); }
+  };
+
+  // Kalan atışları sıfırla
+  const kalanAtisSifirla = () => {
+    if (!window.confirm("Kalan atışlar sıfırlansın mı?")) return;
+    const yC = cihazlar.map(c => c.id === seciliCihaz.id ? { ...c, kalanAtis: 0, kotaSinirsiz: false, sonsuzMod: false } : c);
+    const guncel = yC.find(c => c.id === seciliCihaz.id);
+    setCihazlar(yC); setSeciliCihaz(guncel); kaydet(yC, firmaSayaclari);
+  };
+
   const sifreUretVeYukle = () => {
     const adet = parseInt(yeniAtis); if (!adet || adet <= 0) return;
     const fsMi = seciliCihaz.firmaKodu === "FS";
@@ -674,7 +713,7 @@ export default function App() {
     yaz().finally(() => { setKopyalandiMetin(metin); setTimeout(() => setKopyalandiMetin(""), 2000); });
   };
 
-  // GİRİŞ EKRANLARI
+  // GİRİŞ
   if (mod === "giris") {
     if (girisTipi === "secim") return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#1a0030,#4a0070)", fontFamily: "sans-serif" }}>
@@ -707,7 +746,7 @@ export default function App() {
           <div style={{ fontSize: 36, marginBottom: 8 }}>🏢</div>
           <div style={{ fontSize: 20, fontWeight: "bold", color: renk, marginBottom: 24 }}>FİRMA GİRİŞİ</div>
           <input style={{ width: "88%", padding: 12, borderRadius: 12, border: `2px solid ${renkAcik}`, fontSize: 16, textAlign: "center", marginBottom: 10, letterSpacing: 3, outline: "none" }}
-            placeholder="Firma Kodu (örn: LU)" value={firmaKodGirdi} onChange={e => setFirmaKodGirdi(e.target.value.toUpperCase())} />
+            placeholder="Firma Kodu (örn: FS)" value={firmaKodGirdi} onChange={e => setFirmaKodGirdi(e.target.value.toUpperCase())} />
           <input style={{ width: "88%", padding: 12, borderRadius: 12, border: `2px solid ${renkAcik}`, fontSize: 16, textAlign: "center", marginBottom: 10, letterSpacing: 4, outline: "none" }}
             type="password" placeholder="Firma şifresi" value={sifreGirdi} onChange={e => setSifreGirdi(e.target.value)} onKeyDown={e => e.key === "Enter" && firmaGiris()} />
           {hata && <div style={{ color: renk, fontSize: 13, marginBottom: 10 }}>{hata}</div>}
@@ -833,6 +872,13 @@ export default function App() {
         <div style={{ background: "white", borderRadius: 20, padding: 28, marginBottom: 14, textAlign: "center", boxShadow: "0 2px 12px rgba(108,11,169,0.1)" }}>
           <div style={{ fontSize: 64, fontWeight: "bold", color: renk, fontFamily: "monospace" }}>{seciliCihaz.sonsuzMod ? "∞" : seciliCihaz.kalanAtis.toLocaleString()}</div>
           <div style={{ fontSize: 11, color: "#aaa", letterSpacing: 3 }}>KALAN ATIŞ</div>
+          {/* Kalan atışları sıfırla butonu */}
+          {!seciliCihaz.sonsuzMod && seciliCihaz.kalanAtis > 0 && (
+            <button onClick={kalanAtisSifirla}
+              style={{ marginTop: 12, background: "#fff5f5", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: "bold" }}>
+              🔄 Kalan Atışları Sıfırla
+            </button>
+          )}
         </div>
         <div style={{ background: "white", borderRadius: 16, padding: "16px 18px", marginBottom: 14, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: seciliCihaz.sonSifre ? 8 : 12 }}>
@@ -887,7 +933,7 @@ export default function App() {
           </div>
         )}
         {seciliCihaz.gecmis && seciliCihaz.gecmis.length > 0 && (
-          <div style={{ background: "white", borderRadius: 16, padding: "16px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+          <div style={{ background: "white", borderRadius: 16, padding: "16px 18px", marginBottom: 14, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: "bold", color: "#aaa", letterSpacing: 2 }}>KONTÖR GEÇMİŞİ</div>
               <button onClick={() => gecmisTemizle(seciliCihaz.id)} style={{ background: renkAcik, color: renk, border: "none", borderRadius: 10, padding: "8px 10px", fontSize: 12, cursor: "pointer", fontWeight: "bold" }}>Temizle</button>
@@ -900,11 +946,16 @@ export default function App() {
             ))}
           </div>
         )}
+        {/* Cihaz sil */}
+        <button onClick={() => cihazSil(seciliCihaz.id)}
+          style={{ width: "100%", padding: 14, background: "#fff5f5", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 14, fontSize: 14, fontWeight: "bold", cursor: "pointer" }}>
+          🗑️ Cihazı Sil
+        </button>
       </div>
     </div>
   );
 
-  // ADMIN ANA SAYFA — TAB
+  // ADMIN ANA SAYFA
   const firmaGruplari = FIRMALAR.map(f => ({ ...f, cihazlar: cihazlar.filter(c => c.firmaKodu === f.kod) })).filter(f => f.cihazlar.length > 0);
 
   return (
